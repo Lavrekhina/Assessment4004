@@ -3,17 +3,25 @@ from datetime import datetime
 from .pool import pool
 from .auth import check_access
 from .audit import log_action
+import logging
+import sqlite3
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 def create_claim(user_id, policy_id, description, incident_date, amount):
     """Create a new claim."""
-    if not check_access(user_id, 'adjuster'):
-        return None
-
     conn = pool.get_connection()
     cursor = conn.cursor()
 
     try:
+        # First verify the policy exists
+        cursor.execute('SELECT id FROM policies WHERE id = ?', (policy_id,))
+        if not cursor.fetchone():
+            logger.error(f"Policy {policy_id} not found")
+            return None
+
         cursor.execute('''
             INSERT INTO claims (policy_id, description, incident_date, amount, status)
             VALUES (?, ?, ?, ?, 'pending')
@@ -21,36 +29,33 @@ def create_claim(user_id, policy_id, description, incident_date, amount):
 
         claim_id = cursor.lastrowid
         conn.commit()
+        logger.info(f"Created claim {claim_id}")
         return claim_id
+    except sqlite3.Error as e:
+        logger.error(f"Database error in create_claim: {e}")
+        return None
     finally:
         pool.return_connection(conn)
 
 
-def update_claim_status(user_id, claim_id, status, adjuster_details=None):
-    """Update claim status and adjuster details."""
-    if not check_access(user_id, 'claims_manager'):
-        return None
-
+def update_claim_status(claim_id, status):
+    """Update claim status."""
     conn = pool.get_connection()
     cursor = conn.cursor()
 
     try:
-        query = """
-        UPDATE claims 
-        SET status = ?, adjuster_details = ?, updated_at = ?
-        WHERE id = ?
-        """
-        params = (
-            status,
-            adjuster_details,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            claim_id
-        )
-        cursor.execute(query, params)
-        conn.commit()
+        cursor.execute('''
+            UPDATE claims 
+            SET status = ?
+            WHERE id = ?
+        ''', (status, claim_id))
 
-        # Log the action
-        log_action(user_id, 'update', 'claims', claim_id, {'status': status})
+        conn.commit()
+        logger.info(f"Updated claim {claim_id} status to {status}")
+        return True
+    except sqlite3.Error as e:
+        logger.error(f"Database error in update_claim_status: {e}")
+        return False
     finally:
         pool.return_connection(conn)
 
@@ -85,14 +90,8 @@ def add_claim_payment(user_id, claim_id, amount, payment_date):
         pool.return_connection(conn)
 
 
-def get_claim_details(user_id, claim_id):
+def get_claim_details(claim_id):
     """Get detailed information about a claim."""
-    if not check_access(user_id, 'adjuster'):
-        return None
-
-    # Log the action
-    log_action(user_id, 'view', 'claims', claim_id)
-
     conn = pool.get_connection()
     cursor = conn.cursor()
 
@@ -103,19 +102,19 @@ def get_claim_details(user_id, claim_id):
         ''', (claim_id,))
 
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if row:
+            return dict(row)
+        logger.warning(f"Claim {claim_id} not found")
+        return None
+    except sqlite3.Error as e:
+        logger.error(f"Database error in get_claim_details: {e}")
+        return None
     finally:
         pool.return_connection(conn)
 
 
-def get_claims_by_status(user_id, status):
+def get_claims_by_status(status):
     """Get all claims with a specific status."""
-    if not check_access(user_id, 'adjuster'):
-        return None
-
-    # Log the action
-    log_action(user_id, 'view', 'claims', None, {'status': status})
-
     conn = pool.get_connection()
     cursor = conn.cursor()
 
@@ -125,6 +124,11 @@ def get_claims_by_status(user_id, status):
             WHERE status = ?
         ''', (status,))
 
-        return [dict(row) for row in cursor.fetchall()]
+        claims = [dict(row) for row in cursor.fetchall()]
+        logger.info(f"Found {len(claims)} claims with status {status}")
+        return claims
+    except sqlite3.Error as e:
+        logger.error(f"Database error in get_claims_by_status: {e}")
+        return []
     finally:
         pool.return_connection(conn)

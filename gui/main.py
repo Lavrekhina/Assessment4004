@@ -128,17 +128,51 @@ class InsuranceApp:
 
     def submit_claim(self):
         try:
+            # Validate inputs
+            policy_id = self.policy_id.get()
+            description = self.description.get()
+            amount = self.amount.get()
+
+            if not all([policy_id, description, amount]):
+                messagebox.showerror("Error", "All fields are required")
+                return
+
+            try:
+                policy_id = int(policy_id)
+                amount = float(amount)
+            except ValueError:
+                messagebox.showerror("Error", "Policy ID must be a number and Amount must be a valid number")
+                return
+
+            if amount <= 0:
+                messagebox.showerror("Error", "Amount must be greater than 0")
+                return
+
+            # Create the claim
             claim_id = create_claim(
                 1,  # user_id
-                int(self.policy_id.get()),
-                self.description.get(),
+                policy_id,
+                description,
                 datetime.now(),
-                float(self.amount.get())
+                amount
             )
+
+            if claim_id is None:
+                messagebox.showerror("Error", "Failed to create claim. Please check if the policy exists.")
+                return
+
             messagebox.showinfo("Success", f"Claim created with ID: {claim_id}")
+
+            # Clear the form
+            self.policy_id.delete(0, tk.END)
+            self.description.delete(0, tk.END)
+            self.amount.delete(0, tk.END)
+
+            # Refresh the claims list
             self.refresh_claims()
+
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
     def create_policy(self):
         try:
@@ -159,15 +193,16 @@ class InsuranceApp:
     def refresh_claims(self):
         for item in self.claims_tree.get_children():
             self.claims_tree.delete(item)
-        claims = get_claims_by_status(1, "pending")
-        for claim in claims:
-            self.claims_tree.insert("", "end", values=(
-                claim["id"],
-                claim["policy_id"],
-                claim["incident_date"],
-                claim["amount"],
-                claim["status"]
-            ))
+        claims = get_claims_by_status("pending")
+        if claims:
+            for claim in claims:
+                self.claims_tree.insert("", "end", values=(
+                    claim["id"],
+                    claim["policy_id"],
+                    claim["incident_date"],
+                    claim["amount"],
+                    claim["status"]
+                ))
 
     def refresh_policies(self):
         for item in self.policies_tree.get_children():
@@ -201,4 +236,4 @@ class InsuranceApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = InsuranceApp(root)
-    root.mainloop() 
+    root.mainloop()

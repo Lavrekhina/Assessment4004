@@ -1,8 +1,9 @@
 import sqlite3
+import os
 from queue import Queue
 
-# Database path
-DB_PATH = 'insurance.db'
+# Database path - use the directory where the pool.py file is located
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'insurance.db')
 
 class ConnectionPool:
     def __init__(self, max_connections=5):

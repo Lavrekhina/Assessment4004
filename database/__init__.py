@@ -37,3 +37,4 @@ def execute_query(query, params=None, fetch=True):
 
     conn.commit()
     conn.close()
+
