@@ -1,36 +1,28 @@
-from database import execute_query
 from datetime import datetime
-import sqlite3
+from .pool import pool
 
 
-def create_policy(customer_id, policy_type, start_date, end_date, premium, coverage_limit):
-    """Create a new policy."""
-    conn = sqlite3.connect('insurance.db')
+def create_policy(user_id, customer_id, policy_type, start_date, end_date, premium, coverage_limit):
+    """Create a new policy"""
+    conn = pool.get_connection()
     cursor = conn.cursor()
 
-    query = """
-    INSERT INTO policies (customer_id, policy_type, start_date, end_date, premium, coverage_limit, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
-    """
-    now = datetime.now()
-    params = (
-        customer_id, policy_type,
-        start_date.strftime("%Y-%m-%d"),
-        end_date.strftime("%Y-%m-%d"),
-        premium,
-        coverage_limit,
-        now.strftime("%Y-%m-%d %H:%M:%S"),
-        now.strftime("%Y-%m-%d %H:%M:%S")
-    )
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
-    return cursor.lastrowid
+    try:
+        cursor.execute('''
+            INSERT INTO policies (customer_id, policy_type, start_date, end_date, premium, coverage_limit, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'active')
+        ''', (customer_id, policy_type, start_date, end_date, premium, coverage_limit))
+
+        policy_id = cursor.lastrowid
+        conn.commit()
+        return policy_id
+    finally:
+        pool.return_connection(conn)
 
 
 def update_policy_details(policy_id, coverage_limit=None, premium=None):
     """Update policy details."""
-    conn = sqlite3.connect('insurance.db')
+    conn = pool.get_connection()
     cursor = conn.cursor()
 
     updates = []
@@ -51,12 +43,12 @@ def update_policy_details(policy_id, coverage_limit=None, premium=None):
         cursor.execute(query, params)
         conn.commit()
 
-    conn.close()
+    pool.return_connection(conn)
 
 
 def add_policy_payment(policy_id, amount, payment_date):
     """Record a policy payment."""
-    conn = sqlite3.connect('insurance.db')
+    conn = pool.get_connection()
     cursor = conn.cursor()
 
     query = """
@@ -71,26 +63,37 @@ def add_policy_payment(policy_id, amount, payment_date):
     )
     cursor.execute(query, params)
     conn.commit()
-    conn.close()
+    pool.return_connection(conn)
 
 
 def get_policy_details(policy_id):
-    """Get detailed information about a policy."""
-    return execute_query(
-        """
-        SELECT p.*, c.first_name, c.last_name, c.email,
-               (SELECT SUM(amount) FROM payments WHERE policy_id = p.id) as total_payments
-        FROM policies p
-        JOIN customers c ON p.customer_id = c.id
-        WHERE p.id = ?
-        """,
-        (policy_id,)
-    )
+    """Get policy details"""
+    conn = pool.get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            SELECT * FROM policies 
+            WHERE id = ?
+        ''', (policy_id,))
+
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        pool.return_connection(conn)
 
 
 def get_customer_policies(customer_id):
-    """Get all policies for a customer."""
-    return execute_query(
-        "SELECT * FROM policies WHERE customer_id = ?",
-        (customer_id,)
-    )
+    """Get all policies for a customer"""
+    conn = pool.get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            SELECT * FROM policies 
+            WHERE customer_id = ?
+        ''', (customer_id,))
+
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        pool.return_connection(conn)

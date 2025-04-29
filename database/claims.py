@@ -1,85 +1,130 @@
 from database import execute_query
 from datetime import datetime
-import sqlite3
+from .pool import pool
+from .auth import check_access
+from .audit import log_action
 
-def create_claim(policy_id, description, incident_date, amount):
+
+def create_claim(user_id, policy_id, description, incident_date, amount):
     """Create a new claim."""
-    conn = sqlite3.connect('insurance.db')
+    if not check_access(user_id, 'adjuster'):
+        return None
+
+    conn = pool.get_connection()
     cursor = conn.cursor()
 
-    query = """
-    INSERT INTO claims (policy_id, claim_date, description, amount, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'pending', ?, ?)
-    """
-    now = datetime.now()
-    params = (
-        policy_id,
-        incident_date.strftime("%Y-%m-%d"),
-        description,
-        amount,
-        now.strftime("%Y-%m-%d %H:%M:%S"),
-        now.strftime("%Y-%m-%d %H:%M:%S")
-    )
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
-    return cursor.lastrowid
+    try:
+        cursor.execute('''
+            INSERT INTO claims (policy_id, description, incident_date, amount, status)
+            VALUES (?, ?, ?, ?, 'pending')
+        ''', (policy_id, description, incident_date, amount))
 
-def update_claim_status(claim_id, status, adjuster_details=None):
+        claim_id = cursor.lastrowid
+        conn.commit()
+        return claim_id
+    finally:
+        pool.return_connection(conn)
+
+
+def update_claim_status(user_id, claim_id, status, adjuster_details=None):
     """Update claim status and adjuster details."""
-    conn = sqlite3.connect('insurance.db')
+    if not check_access(user_id, 'claims_manager'):
+        return None
+
+    conn = pool.get_connection()
     cursor = conn.cursor()
 
-    query = """
-    UPDATE claims 
-    SET status = ?, adjuster_details = ?, updated_at = ?
-    WHERE id = ?
-    """
-    params = (
-        status,
-        adjuster_details,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        claim_id
-    )
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
-
-def add_claim_payment(claim_id, amount, payment_date):
-    """Record a claim payment."""
-    conn = sqlite3.connect('insurance.db')
-    cursor = conn.cursor()
-
-    query = """
-    INSERT INTO claim_payments (claim_id, amount, payment_date, created_at)
-    VALUES (?, ?, ?, ?)
-    """
-    params = (
-        claim_id,
-        amount,
-        payment_date.strftime("%Y-%m-%d"),
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    )
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
-
-def get_claim_details(claim_id):
-    """Get detailed information about a claim."""
-    return execute_query(
+    try:
+        query = """
+        UPDATE claims 
+        SET status = ?, adjuster_details = ?, updated_at = ?
+        WHERE id = ?
         """
-        SELECT c.*, p.policy_type, p.premium, 
-               (SELECT SUM(amount) FROM claim_payments WHERE claim_id = c.id) as total_payments
-        FROM claims c
-        JOIN policies p ON c.policy_id = p.id
-        WHERE c.id = ?
-        """,
-        (claim_id,)
-    )
+        params = (
+            status,
+            adjuster_details,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            claim_id
+        )
+        cursor.execute(query, params)
+        conn.commit()
 
-def get_claims_by_status(status):
+        # Log the action
+        log_action(user_id, 'update', 'claims', claim_id, {'status': status})
+    finally:
+        pool.return_connection(conn)
+
+
+def add_claim_payment(user_id, claim_id, amount, payment_date):
+    """Record a claim payment."""
+    if not check_access(user_id, 'claims_manager'):
+        return None
+
+    conn = pool.get_connection()
+    cursor = conn.cursor()
+
+    try:
+        query = """
+        INSERT INTO payments (claim_id, amount, payment_date, status, created_at)
+        VALUES (?, ?, ?, 'completed', ?)
+        """
+        params = (
+            claim_id,
+            amount,
+            payment_date.strftime("%Y-%m-%d"),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+        cursor.execute(query, params)
+        payment_id = cursor.lastrowid
+        conn.commit()
+
+        # Log the action
+        log_action(user_id, 'create', 'payments', payment_id, {'claim_id': claim_id, 'amount': amount})
+        return payment_id
+    finally:
+        pool.return_connection(conn)
+
+
+def get_claim_details(user_id, claim_id):
+    """Get detailed information about a claim."""
+    if not check_access(user_id, 'adjuster'):
+        return None
+
+    # Log the action
+    log_action(user_id, 'view', 'claims', claim_id)
+
+    conn = pool.get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            SELECT * FROM claims 
+            WHERE id = ?
+        ''', (claim_id,))
+
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        pool.return_connection(conn)
+
+
+def get_claims_by_status(user_id, status):
     """Get all claims with a specific status."""
-    return execute_query(
-        "SELECT * FROM claims WHERE status = ?",
-        (status,)
-    )
+    if not check_access(user_id, 'adjuster'):
+        return None
+
+    # Log the action
+    log_action(user_id, 'view', 'claims', None, {'status': status})
+
+    conn = pool.get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            SELECT * FROM claims 
+            WHERE status = ?
+        ''', (status,))
+
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        pool.return_connection(conn)

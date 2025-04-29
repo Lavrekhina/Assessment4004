@@ -1,6 +1,8 @@
 import sqlite3
 import bcrypt
 from datetime import datetime
+from .pool import pool
+
 
 def create_user(username, password, role):
     """Create a new user with hashed password."""
@@ -24,18 +26,23 @@ def create_user(username, password, role):
     conn.commit()
     conn.close()
 
+
 def verify_user(username, password):
-    """Verify user credentials."""
-    conn = sqlite3.connect('insurance.db')
+    """Verify user credentials"""
+    conn = pool.get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT password_hash, role FROM users WHERE username = ?", (username,))
-    result = cursor.fetchone()
-    conn.close()
+    try:
+        cursor.execute('''
+            SELECT role FROM users 
+            WHERE username = ? AND password_hash = ?
+        ''', (username, password))
 
-    if result and bcrypt.checkpw(password.encode('utf-8'), result[0].encode('utf-8')):
-        return result[1]  # Return role if password is correct
-    return None
+        row = cursor.fetchone()
+        return row['role'] if row else None
+    finally:
+        pool.return_connection(conn)
+
 
 def check_access(user_role, required_role):
     """Check if user has required role access."""

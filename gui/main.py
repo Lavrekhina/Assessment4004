@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
-from database.claims import create_claim, get_claims_by_status, get_claim_details
+from database.claims import create_claim, get_claims_by_status
 from database.policies import create_policy, get_policy_details, get_customer_policies
 from database.auth import verify_user
 
@@ -60,7 +60,6 @@ class InsuranceApp:
             messagebox.showerror("Error", "Invalid credentials")
 
     def setup_claims_tab(self):
-        # Claim form
         ttk.Label(self.claims_frame, text="New Claim").grid(row=0, column=0, columnspan=2)
 
         ttk.Label(self.claims_frame, text="Policy ID:").grid(row=1, column=0)
@@ -78,7 +77,6 @@ class InsuranceApp:
         ttk.Button(self.claims_frame, text="Submit Claim",
                    command=self.submit_claim).grid(row=4, column=0, columnspan=2)
 
-        # Claims table
         self.claims_tree = ttk.Treeview(self.claims_frame,
                                         columns=("ID", "Policy", "Date", "Amount", "Status"))
         self.claims_tree.grid(row=5, column=0, columnspan=2)
@@ -89,7 +87,6 @@ class InsuranceApp:
         self.claims_tree.heading("Status", text="Status")
 
     def setup_policies_tab(self):
-        # Policy form
         ttk.Label(self.policies_frame, text="New Policy").grid(row=0, column=0, columnspan=2)
 
         ttk.Label(self.policies_frame, text="Customer ID:").grid(row=1, column=0)
@@ -107,7 +104,6 @@ class InsuranceApp:
         ttk.Button(self.policies_frame, text="Create Policy",
                    command=self.create_policy).grid(row=4, column=0, columnspan=2)
 
-        # Policies table
         self.policies_tree = ttk.Treeview(self.policies_frame,
                                           columns=("ID", "Customer", "Type", "Premium", "Status"))
         self.policies_tree.grid(row=5, column=0, columnspan=2)
@@ -118,17 +114,15 @@ class InsuranceApp:
         self.policies_tree.heading("Status", text="Status")
 
     def setup_reports_tab(self):
-        # Report options
         ttk.Label(self.reports_frame, text="Generate Report").grid(row=0, column=0)
 
         self.report_type = ttk.Combobox(self.reports_frame,
-                                        values=["Claims by Status", "Policy Summary", "Financial Report"])
+                                        values=["Claims by Status", "Policy Summary"])
         self.report_type.grid(row=0, column=1)
 
         ttk.Button(self.reports_frame, text="Generate",
                    command=self.generate_report).grid(row=1, column=0, columnspan=2)
 
-        # Report display
         self.report_text = tk.Text(self.reports_frame, height=20, width=60)
         self.report_text.grid(row=2, column=0, columnspan=2)
 
@@ -165,12 +159,12 @@ class InsuranceApp:
     def refresh_claims(self):
         for item in self.claims_tree.get_children():
             self.claims_tree.delete(item)
-        claims = get_claims_by_status(1, "pending")  # user_id
+        claims = get_claims_by_status(1, "pending")
         for claim in claims:
             self.claims_tree.insert("", "end", values=(
                 claim["id"],
                 claim["policy_id"],
-                claim["claim_date"],
+                claim["incident_date"],
                 claim["amount"],
                 claim["status"]
             ))
@@ -193,7 +187,7 @@ class InsuranceApp:
         self.report_text.delete(1.0, tk.END)
 
         if report_type == "Claims by Status":
-            claims = get_claims_by_status(1, "pending")  # user_id
+            claims = get_claims_by_status(1, "pending")
             for claim in claims:
                 self.report_text.insert(tk.END,
                                         f"Claim {claim['id']}: ${claim['amount']} - {claim['status']}\n")
@@ -207,4 +201,4 @@ class InsuranceApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = InsuranceApp(root)
-    root.mainloop()
+    root.mainloop() 
