@@ -1,16 +1,41 @@
 // Database schema for Insurance Claims Management System
 
+Table branches {
+  id bigint [pk, increment]
+  name varchar(100) [not null]
+  address text [not null]
+  phone varchar(20) [not null]
+  email varchar(255) [not null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table users {
+  id bigint [pk, increment]
+  username varchar(50) [not null, unique]
+  password_hash varchar(255) [not null]
+  role varchar(20) [not null] // admin, agent, adjuster
+  branch_id bigint [ref: > branches.id]
+  last_login timestamp
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  indexes {
+    username [unique]
+  }
+}
+
 Table customers {
   id bigint [pk, increment]
   first_name varchar(100) [not null]
   last_name varchar(100) [not null]
   email varchar(255) [not null, unique]
-  phone varchar(20) [not null]
-  address text [not null]
-  date_of_birth date [not null]
+  phone varchar(20)
+  address text
+  date_of_birth date
+  ssn_encrypted varchar(255) // Encrypted SSN
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
-  is_active boolean [default: true]
 
   indexes {
     email [unique]
@@ -20,13 +45,16 @@ Table customers {
 Table policies {
   id bigint [pk, increment]
   customer_id bigint [ref: > customers.id]
+  policy_type varchar(50) [not null] // AUTO, HOME, LIFE, HEALTH, TRAVEL, PET, BUSINESS
   policy_number varchar(50) [not null, unique]
-  policy_type varchar(50) [not null] // e.g., auto, home, health
   start_date date [not null]
   end_date date [not null]
-  premium_amount decimal(10,2) [not null]
-  coverage_details jsonb [not null]
-  status varchar(20) [not null] // active, expired, cancelled
+  premium decimal(10,2) [not null]
+  coverage_limit decimal(10,2) [not null]
+  status varchar(20) [not null] // active, inactive, cancelled, expired
+  payment_schedule varchar(20) // monthly, quarterly, annually
+  beneficiary_info text
+  exclusions text
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
 
@@ -40,13 +68,13 @@ Table claims {
   id bigint [pk, increment]
   policy_id bigint [ref: > policies.id]
   claim_number varchar(50) [not null, unique]
-  claim_type varchar(50) [not null]
-  description text [not null]
-  incident_date date [not null]
   claim_date date [not null]
+  incident_date date [not null]
+  incident_time time [not null]
+  incident_location text [not null]
+  description text [not null]
+  claim_amount decimal(10,2) [not null]
   status varchar(20) [not null] // pending, approved, rejected, paid
-  estimated_amount decimal(10,2) [not null]
-  approved_amount decimal(10,2)
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
 
@@ -56,40 +84,24 @@ Table claims {
   }
 }
 
-Table incidents {
+Table premium_payments {
   id bigint [pk, increment]
-  claim_id bigint [ref: > claims.id]
-  incident_type varchar(50) [not null]
-  location text [not null]
-  description text [not null]
-  reported_date timestamp [not null]
-  severity varchar(20) [not null] // low, medium, high
+  policy_id bigint [ref: > policies.id]
+  amount decimal(10,2) [not null]
+  payment_date date [not null]
+  payment_method varchar(50) [not null]
+  status varchar(20) [not null] // pending, completed, failed
+  transaction_id varchar(100) [unique]
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
 
   indexes {
-    claim_id
+    transaction_id [unique]
+    policy_id
   }
 }
 
-Table documents {
-  id bigint [pk, increment]
-  claim_id bigint [ref: > claims.id]
-  document_type varchar(50) [not null]
-  file_name varchar(255) [not null]
-  file_path text [not null]
-  file_size bigint [not null]
-  mime_type varchar(100) [not null]
-  uploaded_at timestamp [default: `now()`]
-  created_at timestamp [default: `now()`]
-  updated_at timestamp [default: `now()`]
-
-  indexes {
-    claim_id
-  }
-}
-
-Table payments {
+Table claim_payments {
   id bigint [pk, increment]
   claim_id bigint [ref: > claims.id]
   amount decimal(10,2) [not null]
@@ -106,29 +118,54 @@ Table payments {
   }
 }
 
-Table users {
+Table communication_logs {
   id bigint [pk, increment]
-  username varchar(50) [not null, unique]
-  email varchar(255) [not null, unique]
-  password_hash varchar(255) [not null]
-  role varchar(20) [not null] // admin, agent, adjuster
-  is_active boolean [default: true]
-  last_login timestamp
+  claim_id bigint [ref: > claims.id]
+  policy_id bigint [ref: > policies.id]
+  user_id bigint [ref: > users.id]
+  communication_type varchar(50) [not null] // email, phone, in-person
+  subject varchar(255)
+  message text [not null]
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
+
+  indexes {
+    claim_id
+    policy_id
+    user_id
+  }
 }
 
-Table audit_logs {
+Table assessment_reports {
   id bigint [pk, increment]
+  claim_id bigint [ref: > claims.id]
+  assessor_id bigint [ref: > users.id]
+  assessment_date date [not null]
+  findings text [not null]
+  recommendations text [not null]
+  estimated_cost decimal(10,2) [not null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  indexes {
+    claim_id
+    assessor_id
+  }
+}
+
+Table audit_log {
+  id bigint [pk, increment]
+  table_name varchar(50) [not null]
+  record_id bigint [not null]
+  action varchar(20) [not null] // insert, update, delete
+  old_values text
+  new_values text
   user_id bigint [ref: > users.id]
-  action varchar(50) [not null]
-  entity_type varchar(50) [not null]
-  entity_id bigint [not null]
-  old_values jsonb
-  new_values jsonb
   created_at timestamp [default: `now()`]
 
   indexes {
+    table_name
+    record_id
     user_id
   }
 }

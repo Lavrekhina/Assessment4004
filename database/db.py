@@ -56,27 +56,18 @@ class PaymentStatus(Enum):
 
 class Database:
     def __init__(self, db_path='insurance.db', encryption_key=None):
-        self.db_path = db_path
+        # Get the absolute path to the database file
+        if not os.path.isabs(db_path):
+            # Use the workspace root directory
+            workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.db_path = os.path.join(workspace_root, db_path)
+        else:
+            self.db_path = db_path
+
         self.conn = None
         self.cursor = None
         self.encryption_key = encryption_key or self._generate_encryption_key()
         self.connect()
-
-        # Check if tables exist
-        self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if not self.cursor.fetchone():
-            # Create tables if they don't exist
-            with open('database/schema.sql', 'r') as f:
-                schema = f.read()
-                self.cursor.executescript(schema)
-                self.conn.commit()
-
-            # Load sample data since this is a new database
-            from database.sample_data import add_sample_data
-            add_sample_data(self)
-            logger.info("Sample data loaded successfully")
-        else:
-            logger.info("Database tables already exist")
 
     def connect(self):
         """Connect to the database"""
@@ -85,7 +76,7 @@ class Database:
             self.conn.execute("PRAGMA foreign_keys = ON")
             self.conn.row_factory = sqlite3.Row  # Enable row factory for named access
             self.cursor = self.conn.cursor()
-            logger.info("Connected to existing database")
+            logger.info(f"Connected to database at {self.db_path}")
         except Exception as e:
             logger.error(f"Error connecting to database: {e}")
             raise

@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from database.db import Database, PolicyType, PolicyStatus, ClaimStatus
 import random
 import bcrypt
+import sqlite3
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -13,23 +15,30 @@ def add_sample_data(db: Database):
     try:
         # Get current date for dynamic date calculations
         current_date = datetime.now()
+        # Generate unique timestamp for emails
+        timestamp = int(time.time())
 
-        # Add default user
-        password = "admin123"  # Default password
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-        db.cursor.execute("""
-            INSERT INTO users (username, password_hash, role, branch_id)
-            VALUES (?, ?, ?, ?)
-        """, ('admin', hashed_password.decode('utf-8'), 'admin', 1))
-        db.conn.commit()
-        logger.info("Created default admin user")
+        # Check if admin user already exists
+        db.cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        if not db.cursor.fetchone():
+            # Add default user
+            password = "admin123"  # Default password
+            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            db.cursor.execute("""
+                INSERT INTO users (username, password_hash, role, branch_id)
+                VALUES (?, ?, ?, ?)
+            """, ('admin', hashed_password.decode('utf-8'), 'admin', 1))
+            db.conn.commit()
+            logger.info("Created default admin user")
+        else:
+            logger.info("Admin user already exists")
 
         # Add sample customers
         customers = [
             {
                 'first_name': 'John',
                 'last_name': 'Doe',
-                'email': 'john.doe@example.com',
+                'email': f'john.doe.{timestamp}@example.com',
                 'phone': '555-0101',
                 'address': '123 Main St, Anytown, USA',
                 'dob': '1980-01-15',
@@ -38,7 +47,7 @@ def add_sample_data(db: Database):
             {
                 'first_name': 'Jane',
                 'last_name': 'Smith',
-                'email': 'jane.smith@example.com',
+                'email': f'jane.smith.{timestamp}@example.com',
                 'phone': '555-0102',
                 'address': '456 Oak Ave, Somewhere, USA',
                 'dob': '1985-05-20',
@@ -47,7 +56,7 @@ def add_sample_data(db: Database):
             {
                 'first_name': 'Robert',
                 'last_name': 'Johnson',
-                'email': 'robert.j@example.com',
+                'email': f'robert.j.{timestamp}@example.com',
                 'phone': '555-0103',
                 'address': '789 Pine Rd, Elsewhere, USA',
                 'dob': '1975-11-30',
@@ -56,7 +65,7 @@ def add_sample_data(db: Database):
             {
                 'first_name': 'Sarah',
                 'last_name': 'Williams',
-                'email': 'sarah.w@example.com',
+                'email': f'sarah.w.{timestamp}@example.com',
                 'phone': '555-0104',
                 'address': '321 Elm St, Nowhere, USA',
                 'dob': '1990-03-25',
@@ -65,7 +74,7 @@ def add_sample_data(db: Database):
             {
                 'first_name': 'Michael',
                 'last_name': 'Brown',
-                'email': 'michael.b@example.com',
+                'email': f'michael.b.{timestamp}@example.com',
                 'phone': '555-0105',
                 'address': '654 Maple Dr, Anywhere, USA',
                 'dob': '1988-07-12',
@@ -75,191 +84,80 @@ def add_sample_data(db: Database):
 
         customer_ids = []
         for customer in customers:
-            customer_id = db.create_customer(
-                first_name=customer['first_name'],
-                last_name=customer['last_name'],
-                email=customer['email'],
-                phone=customer['phone'],
-                address=customer['address'],
-                dob=customer['dob'],
-                ssn=customer['ssn']
-            )
-            customer_ids.append(customer_id)
-            logger.info(f"Created customer: {customer['first_name']} {customer['last_name']}")
+            try:
+                customer_id = db.create_customer(
+                    first_name=customer['first_name'],
+                    last_name=customer['last_name'],
+                    email=customer['email'],
+                    phone=customer['phone'],
+                    address=customer['address'],
+                    dob=customer['dob'],
+                    ssn=customer['ssn']
+                )
+                if customer_id:
+                    customer_ids.append(customer_id)
+                    logger.info(f"Created customer: {customer['first_name']} {customer['last_name']}")
+            except sqlite3.IntegrityError as e:
+                if 'UNIQUE constraint failed' in str(e):
+                    logger.warning(f"Customer {customer['email']} already exists")
+                else:
+                    raise
 
-        # Add sample policies with dynamic dates
-        policies = [
-            {
-                'customer_id': customer_ids[0],
-                'policy_type': PolicyType.AUTO.value,
-                'policy_number': 'AUTO',
-                'start_date': (current_date - timedelta(days=180)).strftime('%Y-%m-%d'),
-                'end_date': (current_date + timedelta(days=180)).strftime('%Y-%m-%d'),
-                'premium': 1200.00,
-                'coverage_limit': 50000.00,
-                'status': PolicyStatus.ACTIVE.value,
-                'payment_schedule': 'Monthly',
-                'beneficiary_info': 'Self',
-                'exclusions': 'Racing, Commercial use'
-            },
-            {
-                'customer_id': customer_ids[1],
-                'policy_type': PolicyType.HOME.value,
-                'policy_number': 'HOME',
-                'start_date': (current_date - timedelta(days=90)).strftime('%Y-%m-%d'),
-                'end_date': (current_date + timedelta(days=275)).strftime('%Y-%m-%d'),
-                'premium': 2500.00,
-                'coverage_limit': 300000.00,
-                'status': PolicyStatus.ACTIVE.value,
-                'payment_schedule': 'Quarterly',
-                'beneficiary_info': 'Family',
-                'exclusions': 'Flood damage'
-            },
-            {
-                'customer_id': customer_ids[2],
-                'policy_type': PolicyType.LIFE.value,
-                'policy_number': 'LIFE',
-                'start_date': (current_date - timedelta(days=45)).strftime('%Y-%m-%d'),
-                'end_date': (current_date + timedelta(days=3650)).strftime('%Y-%m-%d'),
-                'premium': 5000.00,
-                'coverage_limit': 1000000.00,
-                'status': PolicyStatus.ACTIVE.value,
-                'payment_schedule': 'Annual',
-                'beneficiary_info': 'Spouse and Children',
-                'exclusions': 'Suicide within first year'
-            },
-            {
-                'customer_id': customer_ids[3],
-                'policy_type': PolicyType.HEALTH.value,
-                'policy_number': 'HEALTH',
-                'start_date': (current_date - timedelta(days=30)).strftime('%Y-%m-%d'),
-                'end_date': (current_date + timedelta(days=335)).strftime('%Y-%m-%d'),
-                'premium': 3500.00,
-                'coverage_limit': 500000.00,
-                'status': PolicyStatus.INACTIVE.value,
-                'payment_schedule': 'Monthly',
-                'beneficiary_info': 'Self and Dependents',
-                'exclusions': 'Pre-existing conditions'
-            },
-            {
-                'customer_id': customer_ids[4],
-                'policy_type': PolicyType.TRAVEL.value,
-                'policy_number': 'TRAVEL',
-                'start_date': (current_date - timedelta(days=15)).strftime('%Y-%m-%d'),
-                'end_date': (current_date + timedelta(days=45)).strftime('%Y-%m-%d'),
-                'premium': 500.00,
-                'coverage_limit': 25000.00,
-                'status': PolicyStatus.ACTIVE.value,
-                'payment_schedule': 'Single Payment',
-                'beneficiary_info': 'Self',
-                'exclusions': 'Extreme sports, War zones'
-            },
-            {
-                'customer_id': customer_ids[0],
-                'policy_type': PolicyType.PET.value,
-                'policy_number': 'PET',
-                'start_date': (current_date - timedelta(days=60)).strftime('%Y-%m-%d'),
-                'end_date': (current_date + timedelta(days=305)).strftime('%Y-%m-%d'),
-                'premium': 800.00,
-                'coverage_limit': 10000.00,
-                'status': PolicyStatus.CANCELLED.value,
-                'payment_schedule': 'Monthly',
-                'beneficiary_info': 'Dog: Max',
-                'exclusions': 'Pre-existing conditions'
-            },
-            {
-                'customer_id': customer_ids[1],
-                'policy_type': PolicyType.BUSINESS.value,
-                'policy_number': 'BUSINESS',
-                'start_date': (current_date - timedelta(days=45)).strftime('%Y-%m-%d'),
-                'end_date': (current_date + timedelta(days=320)).strftime('%Y-%m-%d'),
-                'premium': 5000.00,
-                'coverage_limit': 1000000.00,
-                'status': PolicyStatus.EXPIRED.value,
-                'payment_schedule': 'Quarterly',
-                'beneficiary_info': 'Business: Smith Consulting LLC',
-                'exclusions': 'Cyber attacks, Employee fraud'
-            }
-        ]
+        if not customer_ids:
+            raise Exception("No customers were created. Cannot proceed with policy creation.")
 
+        # Add sample policies
+        policy_types = ['AUTO', 'HOME', 'LIFE', 'HEALTH', 'TRAVEL', 'PET', 'BUSINESS']
         policy_ids = []
-        for policy in policies:
-            policy_id = db.create_policy(
-                customer_id=policy['customer_id'],
-                policy_type=policy['policy_type'],
-                policy_number=policy['policy_number'],
-                start_date=policy['start_date'],
-                end_date=policy['end_date'],
-                premium=policy['premium'],
-                coverage_limit=policy['coverage_limit'],
-                status=policy['status'],
-                payment_schedule=policy['payment_schedule'],
-                beneficiary_info=policy['beneficiary_info'],
-                exclusions=policy['exclusions']
-            )
-            policy_ids.append(policy_id)
-            logger.info(f"Created policy: {policy['policy_number']}")
+        for policy_type in policy_types:
+            try:
+                policy_id = db.create_policy(
+                    customer_id=random.choice(customer_ids),
+                    policy_type=policy_type,
+                    policy_number=f"POL-{timestamp}-{random.randint(1000, 9999)}",
+                    start_date=current_date.strftime('%Y-%m-%d'),
+                    end_date=(current_date + timedelta(days=365)).strftime('%Y-%m-%d'),
+                    premium=random.uniform(500, 2000),
+                    coverage_limit=random.uniform(10000, 100000),
+                    status='active',
+                    payment_schedule='Monthly',
+                    beneficiary_info='Self',
+                    exclusions='None'
+                )
+                if policy_id:
+                    policy_ids.append(policy_id)
+                    logger.info(f"Created policy: {policy_type}")
+            except sqlite3.IntegrityError as e:
+                if 'UNIQUE constraint failed' in str(e):
+                    logger.warning(f"Policy number already exists")
+                else:
+                    raise
 
-        # Add sample claims with dynamic dates
-        claims = [
-            {
-                'policy_id': policy_ids[0],
-                'claim_date': (current_date - timedelta(days=15)).strftime('%Y-%m-%d'),
-                'incident_date': (current_date - timedelta(days=16)).strftime('%Y-%m-%d'),
-                'incident_time': '14:30:00',
-                'incident_location': 'Main St and 1st Ave, Anytown',
-                'description': 'Rear-end collision at traffic light',
-                'claim_amount': 5000.00,
-                'status': 'pending'  # New claim, under review
-            },
-            {
-                'policy_id': policy_ids[1],
-                'claim_date': (current_date - timedelta(days=10)).strftime('%Y-%m-%d'),
-                'incident_date': (current_date - timedelta(days=11)).strftime('%Y-%m-%d'),
-                'incident_time': '02:15:00',
-                'incident_location': '456 Oak Ave, Somewhere',
-                'description': 'Water damage from burst pipe',
-                'claim_amount': 15000.00,
-                'status': 'approved'  # Claim approved but not yet paid
-            },
-            {
-                'policy_id': policy_ids[3],
-                'claim_date': (current_date - timedelta(days=5)).strftime('%Y-%m-%d'),
-                'incident_date': (current_date - timedelta(days=5)).strftime('%Y-%m-%d'),
-                'incident_time': '09:45:00',
-                'incident_location': 'City Hospital',
-                'description': 'Emergency appendectomy',
-                'claim_amount': 25000.00,
-                'status': 'paid'  # Claim processed and paid
-            },
-            {
-                'policy_id': policy_ids[4],
-                'claim_date': (current_date - timedelta(days=3)).strftime('%Y-%m-%d'),
-                'incident_date': (current_date - timedelta(days=4)).strftime('%Y-%m-%d'),
-                'incident_time': '16:45:00',
-                'incident_location': 'Vet Emergency Clinic',
-                'description': 'Emergency treatment for dog after eating chocolate',
-                'claim_amount': 800.00,
-                'status': 'rejected'  # Claim rejected as it's a pre-existing condition
-            }
-        ]
+        if not policy_ids:
+            raise Exception("No policies were created. Cannot proceed with claim creation.")
 
-        for claim in claims:
-            claim_id = db.create_claim(
-                policy_id=claim['policy_id'],
-                claim_date=claim['claim_date'],
-                incident_date=claim['incident_date'],
-                incident_time=claim['incident_time'],
-                incident_location=claim['incident_location'],
-                description=claim['description'],
-                claim_amount=claim['claim_amount'],
-                status=claim['status']
-            )
-            if claim_id:
-                logger.info(f"Created claim: {claim_id}")
+        # Add sample claims
+        claim_statuses = ['pending', 'approved', 'paid', 'rejected']
+        for status in claim_statuses:
+            try:
+                claim_id = db.create_claim(
+                    policy_id=policy_ids[0],
+                    claim_date=current_date.strftime('%Y-%m-%d'),
+                    incident_date=current_date.strftime('%Y-%m-%d'),
+                    incident_time=current_date.strftime('%H:%M:%S'),
+                    incident_location='123 Main St',
+                    description=f'Test claim with status: {status}',
+                    claim_amount=random.uniform(1000, 5000),
+                    status=status
+                )
+                if claim_id:
+                    logger.info(f"Created claim: {claim_id}")
+            except Exception as e:
+                logger.error(f"Error creating claim: {e}")
 
         logger.info("Sample data added successfully")
         return True
+
     except Exception as e:
         logger.error(f"Error adding sample data: {e}")
         return False

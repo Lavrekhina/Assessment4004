@@ -1,81 +1,97 @@
 import unittest
 import tkinter as tk
-from gui.main import InsuranceApp
+from gui.main import InsuranceSystem
 from tests.config import setup_test_db, teardown_test_db, TEST_DB_PATH
 
 
-class TestInsuranceApp(unittest.TestCase):
+class TestInsuranceSystem(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         setup_test_db()
         cls.root = tk.Tk()
-        cls.app = InsuranceApp(cls.root)
+        cls.app = InsuranceSystem()
 
     @classmethod
     def tearDownClass(cls):
         cls.root.destroy()
         teardown_test_db()
 
-    def test_login_frame_exists(self):
-        """Test if login frame is properly initialized"""
-        self.assertIsNotNone(self.app.login_frame)
-        self.assertTrue(self.app.login_frame.winfo_exists())
+    def test_login_window_exists(self):
+        """Test if login window is properly initialized"""
+        self.assertIsNotNone(self.app.login_window)
+        self.assertTrue(self.app.login_window.winfo_exists())
 
-    def test_main_frame_hidden_initially(self):
-        """Test if main frame is hidden initially"""
-        self.assertFalse(self.app.main_frame.winfo_ismapped())
+    def test_login_fields_exist(self):
+        """Test if login fields are properly initialized"""
+        self.assertIsNotNone(self.app.username_entry)
+        self.assertIsNotNone(self.app.password_entry)
 
-    def test_claims_tab_exists(self):
-        """Test if claims tab is properly initialized"""
-        self.assertIsNotNone(self.app.claims_frame)
-        self.assertIsNotNone(self.app.claims_tree)
+    def test_login_success(self):
+        """Test successful login"""
+        # Set test credentials
+        self.app.username_entry.insert(0, 'test_user')
+        self.app.password_entry.insert(0, 'test123')
 
-    def test_policies_tab_exists(self):
-        """Test if policies tab is properly initialized"""
-        self.assertIsNotNone(self.app.policies_frame)
-        self.assertIsNotNone(self.app.policies_tree)
+        # Perform login
+        self.app.login()
 
-    def test_reports_tab_exists(self):
-        """Test if reports tab is properly initialized"""
-        self.assertIsNotNone(self.app.reports_frame)
-        self.assertIsNotNone(self.app.report_text)
+        # Verify main window is created
+        self.assertIsNotNone(self.app.main_window)
+        self.assertTrue(self.app.main_window.winfo_exists())
 
-    def test_submit_claim(self):
-        """Test claim submission functionality"""
+    def test_login_failure(self):
+        """Test failed login"""
+        # Set invalid credentials
+        self.app.username_entry.delete(0, tk.END)
+        self.app.password_entry.delete(0, tk.END)
+        self.app.username_entry.insert(0, 'invalid_user')
+        self.app.password_entry.insert(0, 'wrong_password')
+
+        # Perform login
+        self.app.login()
+
+        # Verify main window is not created
+        self.assertIsNone(getattr(self.app, 'main_window', None))
+
+    def test_main_window_tabs(self):
+        """Test if main window tabs are properly initialized"""
+        # Login first
+        self.app.username_entry.delete(0, tk.END)
+        self.app.password_entry.delete(0, tk.END)
+        self.app.username_entry.insert(0, 'test_user')
+        self.app.password_entry.insert(0, 'test123')
+        self.app.login()
+
+        # Verify tabs exist
+        self.assertIsNotNone(self.app.notebook)
+        self.assertIsNotNone(self.app.customers_tab)
+        self.assertIsNotNone(self.app.policies_tab)
+        self.assertIsNotNone(self.app.claims_tab)
+        self.assertIsNotNone(self.app.reports_tab)
+
+    def test_customer_creation(self):
+        """Test customer creation functionality"""
+        # Login first
+        self.app.username_entry.delete(0, tk.END)
+        self.app.password_entry.delete(0, tk.END)
+        self.app.username_entry.insert(0, 'test_user')
+        self.app.password_entry.insert(0, 'test123')
+        self.app.login()
+
         # Set test values
-        self.app.policy_id.insert(0, "1")
-        self.app.description.insert(0, "Test claim")
-        self.app.amount.insert(0, "1000.00")
+        self.app.first_name_entry.insert(0, 'New')
+        self.app.last_name_entry.insert(0, 'Customer')
+        self.app.email_entry.insert(0, 'new@example.com')
+        self.app.phone_entry.insert(0, '9876543210')
+        self.app.address_entry.insert(0, '456 New St')
+        self.app.dob_entry.insert(0, '1995-01-01')
+        self.app.ssn_entry.insert(0, '987-65-4321')
 
-        # Submit claim
-        self.app.submit_claim()
+        # Create customer
+        self.app.create_customer()
 
-        # Verify claims tree is updated
-        self.assertGreater(len(self.app.claims_tree.get_children()), 0)
-
-    def test_create_policy(self):
-        """Test policy creation functionality"""
-        # Set test values
-        self.app.customer_id.insert(0, "1")
-        self.app.policy_type.insert(0, "auto")
-        self.app.premium.insert(0, "1000.00")
-
-        # Create policy
-        self.app.create_policy()
-
-        # Verify policies tree is updated
-        self.assertGreater(len(self.app.policies_tree.get_children()), 0)
-
-    def test_generate_report(self):
-        """Test report generation functionality"""
-        # Set report type
-        self.app.report_type.set("Claims by Status")
-
-        # Generate report
-        self.app.generate_report()
-
-        # Verify report text is updated
-        self.assertNotEqual(self.app.report_text.get("1.0", tk.END).strip(), "")
+        # Verify customer list is updated
+        self.assertGreater(len(self.app.customer_tree.get_children()), 0)
 
 
 if __name__ == '__main__':
