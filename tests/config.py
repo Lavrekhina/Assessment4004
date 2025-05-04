@@ -42,4 +42,4 @@ def setup_test_db():
 def teardown_test_db():
     """Clean up test database"""
     if os.path.exists(TEST_DB_PATH):
-        os.remove(TEST_DB_PATH)
+        os.remove(TEST_DB_PATH) 
